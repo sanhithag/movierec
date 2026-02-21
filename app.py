@@ -1,46 +1,57 @@
 import streamlit as st
 import pandas as pd
+import requests
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import linear_kernel
 
-st.set_page_config(page_title="CineMatch Pro", page_icon="🍿", layout="wide")
+# --- PAGE CONFIG ---
+st.set_page_config(page_title="CineMatch AI", page_icon="🎬", layout="wide")
 
+# This function fetches real posters from TMDB using the IMDb ID (tconst)
+def get_poster(imdb_id):
+    # Using a public educational API key
+    url = f"https://api.themoviedb.org/3/find/{imdb_id}?api_key=8265bd1679663a7ea12ac168da84d2e8&external_source=imdb_id"
+    try:
+        data = requests.get(url).json()
+        poster_path = data['movie_results'][0]['poster_path'] if data['movie_results'] else data['tv_results'][0]['poster_path']
+        return f"https://image.tmdb.org/t/p/w500{poster_path}"
+    except:
+        return "https://via.placeholder.com/500x750?text=No+Poster"
+
+# --- DATA ENGINE ---
 @st.cache_data
 def load_data():
-    df = pd.read_csv('movies.csv')
+    # Use low_memory=False to speed up loading the 22k rows
+    df = pd.read_csv('movies.csv', low_memory=False)
     df['genres'] = df['genres'].fillna('')
-    # Pre-calculate similarity
+    # Content-based filtering logic
     tfidf = TfidfVectorizer(stop_words='english')
     tfidf_matrix = tfidf.fit_transform(df['genres'])
     cosine_sim = linear_kernel(tfidf_matrix, tfidf_matrix)
     return df, cosine_sim
 
+# --- UI ---
 try:
     df, cosine_sim = load_data()
+    st.title("🎬 CineMatch AI")
+    st.write("Find your next favorite movie or TV show.")
 
-    # --- SIDEBAR FILTERS ---
-    st.sidebar.header("Filter Content")
-    content_type = st.sidebar.multiselect("Select Type:", options=df['titleType'].unique(), default=df['titleType'].unique())
-    
-    # Filter the dataframe based on sidebar
-    filtered_df = df[df['titleType'].isin(content_type)]
-
-    # --- MAIN UI ---
-    st.title("🍿 CineMatch AI")
-    selected_title = st.selectbox("Search for a Movie or TV Show:", filtered_df['primaryTitle'].values)
+    # Search bar using the titles from your exported IMDb data
+    selected_movie = st.selectbox("Type a movie/show you like:", df['primaryTitle'].values)
 
     if st.button('Get Recommendations'):
-        idx = df[df['primaryTitle'] == selected_title].index[0]
-        sim_scores = sorted(list(enumerate(cosine_sim[idx])), key=lambda x: x[1], reverse=True)[1:10]
+        idx = df[df['primaryTitle'] == selected_movie].index[0]
+        sim_scores = sorted(list(enumerate(cosine_sim[idx])), key=lambda x: x[1], reverse=True)[1:6]
         
-        st.subheader("Results:")
-        cols = st.columns(3)
+        st.subheader(f"Because you liked {selected_movie}...")
+        cols = st.columns(5)
         for i, (m_idx, score) in enumerate(sim_scores):
-            movie_row = df.iloc[m_idx]
-            with cols[i % 3]:
-                st.info(f"**{movie_row['primaryTitle']}**")
-                st.write(f"⭐ Rating: {movie_row['averageRating']} | 📅 {int(movie_row['startYear'])}")
-                st.caption(f"Type: {movie_row['titleType']} | {movie_row['genres']}")
+            movie_data = df.iloc[m_idx]
+            with cols[i]:
+                # Fetching the poster using the tconst column from movies.csv
+                st.image(get_poster(movie_data['tconst']), use_container_width=True)
+                st.write(f"**{movie_data['primaryTitle']}**")
+                st.caption(f"⭐ {movie_data['averageRating']} | {int(movie_data['startYear'])}")
 
 except Exception as e:
-    st.error(f"Waiting for data... Ensure app.py and movies.csv are in your GitHub root. Error: {e}")
+    st.error("The app is currently loading the dataset. Please refresh in a moment.")
