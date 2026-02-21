@@ -21,12 +21,17 @@ def get_poster(imdb_id):
 # --- DATA ENGINE ---
 @st.cache_data
 def load_data():
-    # Use low_memory=False to speed up loading the 22k rows
+    # Use low_memory=False for faster, more stable loading of large CSVs
     df = pd.read_csv('movies.csv', low_memory=False)
+    
+    # Fill empty genres once
     df['genres'] = df['genres'].fillna('')
-    # Content-based filtering logic
+    
+    # Standard TF-IDF vectorization
     tfidf = TfidfVectorizer(stop_words='english')
     tfidf_matrix = tfidf.fit_transform(df['genres'])
+    
+    # Linear kernel is memory-efficient for this scale
     cosine_sim = linear_kernel(tfidf_matrix, tfidf_matrix)
     return df, cosine_sim
 
@@ -55,3 +60,4 @@ try:
 
 except Exception as e:
     st.error("The app is currently loading the dataset. Please refresh in a moment.")
+
