@@ -30,7 +30,7 @@ try:
     df = load_and_prep_data()
     tfidf_matrix = compute_tfidf(df['genres'])
 
-    st.title("🍿 CineMatch AI")
+    st.title("Movierecs cuz im lazy ash")
     
     # Using a selectbox with a search feature
     selected_title = st.selectbox("Search for a Movie/Show:", df['primaryTitle'].values)
@@ -58,4 +58,5 @@ try:
 except Exception as e:
     st.error(f"Something went wrong: {e}")
     st.info("Check if 'movies.csv' is in the same folder and has the correct columns.")
+
 
