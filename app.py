@@ -13,7 +13,13 @@ def load_data():
     return df
 
 try:
-    df = load_data()
+    @st.cache_data
+    def load_data():
+        df = pd.read_csv('movies.csv', low_memory=False)
+        # Filter for movies made after the year 2000
+        df = df[df['startYear'] > 2000] 
+        df['genres'] = df['genres'].fillna('')
+        return df
     
     # We move the Vectorizer OUTSIDE the load_data to process it only when needed
     tfidf = TfidfVectorizer(stop_words='english')
@@ -40,3 +46,4 @@ try:
 
 except Exception as e:
     st.error("App is initializing. Please wait 30 seconds and refresh.")
+
