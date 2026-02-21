@@ -1,87 +1,84 @@
 import streamlit as st
 import pandas as pd
 import requests
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import linear_kernel
 
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="Movierecs cuz im lazy ash", page_icon="🍿", layout="wide")
 
-# --- SECURE API FETCHING ---
-def get_poster(imdb_id):
-    # This pulls the key from your Streamlit Dashboard Secrets
+# --- TMDB API HELPERS ---
+def get_movie_details(imdb_id):
+    api_key = st.secrets["TMDB_API_KEY"]
+    # 1. Find the TMDB ID from the IMDb ID (tconst)
+    find_url = f"https://api.themoviedb.org/3/find/{imdb_id}?api_key={api_key}&external_source=imdb_id"
     try:
-        api_key = st.secrets["TMDB_API_KEY"]
-        url = f"https://api.themoviedb.org/3/find/{imdb_id}?api_key={api_key}&external_source=imdb_id"
-        data = requests.get(url).json()
-        
-        if data.get('movie_results'):
-            path = data['movie_results'][0]['poster_path']
-        elif data.get('tv_results'):
-            path = data['tv_results'][0]['poster_path']
-        else:
-            return "https://via.placeholder.com/500x750?text=No+Poster+Found"
-            
-        return f"https://image.tmdb.org/t/p/w500{path}"
-    except Exception:
-        return "https://via.placeholder.com/500x750?text=Logo+Missing"
+        data = requests.get(find_url).json()
+        if data['movie_results']:
+            movie = data['movie_results'][0]
+            return movie['id'], movie['overview'], f"https://image.tmdb.org/t/p/w500{movie['poster_path']}"
+        elif data['tv_results']:
+            tv = data['tv_results'][0]
+            return tv['id'], tv['overview'], f"https://image.tmdb.org/t/p/w500{tv['poster_path']}"
+    except:
+        return None, None, None
 
-# --- DATA ENGINE ---
+def get_recommendations(tmdb_id, media_type="movie"):
+    api_key = st.secrets["TMDB_API_KEY"]
+    # 2. Get recommendations based on plot keywords/stories
+    rec_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/recommendations?api_key={api_key}"
+    try:
+        return requests.get(rec_url).json().get('results', [])[:6]
+    except:
+        return []
+
+# --- DATA LOADING ---
 @st.cache_data
-def load_and_prep_data():
-    # Load and keep only necessary columns to save RAM
+def load_data():
     df = pd.read_csv('movies.csv', low_memory=False)
-    
-    # Filter: Modern movies only (>2000) and popular enough to be "real"
-    df = df[df['startYear'] > 2000].copy()
-    df['genres'] = df['genres'].fillna('')
-    
-    # Reset index so it matches the TF-IDF matrix exactly
-    df = df.reset_index(drop=True)
-    return df
+    # We'll stick to popular modern movies to ensure the API has data for them
+    df = df[(df['startYear'] > 2000) & (df['numVotes'] > 20000)]
+    return df.sort_values('primaryTitle')
 
-@st.cache_resource 
-def compute_tfidf(genres_series):
-    tfidf = TfidfVectorizer(stop_words='english')
-    matrix = tfidf.fit_transform(genres_series)
-    return matrix
-
-# --- APP LAYOUT ---
+# --- UI ---
 try:
-    df = load_and_prep_data()
-    tfidf_matrix = compute_tfidf(df['genres'])
+    df = load_data()
+    st.title("🍿 Plot-Based Recommender")
+    st.write("Using TMDB's AI to find stories, not just genres.")
 
-    st.title("🍿 Movierecs cuz im lazy ash")
-    st.markdown("---")
+    selected_title = st.selectbox("Select a movie you love:", df['primaryTitle'].values)
 
-    # Search functionality
-    selected_title = st.selectbox("Search for a Movie/Show you liked:", df['primaryTitle'].values)
-
-    if st.button('Recommend'):
-        # Find index of selected movie
-        idx = df[df['primaryTitle'] == selected_title].index[0]
+    if st.button('Find Similar Stories'):
+        # Get the IMDb ID from our CSV
+        imdb_id = df[df['primaryTitle'] == selected_title]['tconst'].values[0]
         
-        # Memory-efficient similarity (calculates only for the selected movie)
-        cosine_sim_single = linear_kernel(tfidf_matrix[idx], tfidf_matrix).flatten()
+        tmdb_id, original_plot, original_poster = get_movie_details(imdb_id)
         
-        # Get top 6 matches (excluding the movie itself)
-        sim_scores = sorted(list(enumerate(cosine_sim_single)), key=lambda x: x[1], reverse=True)[1:7]
-        
-        st.subheader(f"Because you liked '{selected_title}':")
-        
-        # Display in a clean 3-column grid
-        cols = st.columns(3)
-        for i, (m_idx, score) in enumerate(sim_scores):
-            movie = df.iloc[m_idx]
-            with cols[i % 3]:
-                with st.container(border=True):
-                    # Fetching poster from TMDB using IMDb ID (tconst)
-                    poster_url = get_poster(movie['tconst'])
-                    st.image(poster_url, use_container_width=True)
-                    
-                    st.markdown(f"**{movie['primaryTitle']}**")
-                    st.caption(f"📅 {int(movie['startYear'])} | ⭐ {movie['averageRating']}")
+        if tmdb_id:
+            # Show the "Source" movie plot
+            with st.expander("Show Original Plot Summary"):
+                col_a, col_b = st.columns([1, 4])
+                col_a.image(original_poster)
+                col_b.write(original_plot)
+            
+            st.markdown("---")
+            st.subheader("Recommended for the Plot:")
+            
+            # Fetch recommendations from the API
+            recs = get_recommendations(tmdb_id)
+            
+            if recs:
+                cols = st.columns(3)
+                for i, movie in enumerate(recs):
+                    with cols[i % 3]:
+                        with st.container(border=True):
+                            poster = f"https://image.tmdb.org/t/p/w500{movie['poster_path']}" if movie['poster_path'] else "https://via.placeholder.com/500"
+                            st.image(poster, use_container_width=True)
+                            st.markdown(f"**{movie.get('title', movie.get('name'))}**")
+                            # Show the plot snippet
+                            st.caption(f"{movie['overview'][:150]}...")
+            else:
+                st.warning("No specific plot matches found. Try another movie!")
+        else:
+            st.error("Could not find this movie in the plot database.")
 
 except Exception as e:
-    st.error(f"Something went wrong: {e}")
-    st.info("Ensure TMDB_API_KEY is added to Streamlit Secrets.")
+    st.error(f"Error: {e}")
