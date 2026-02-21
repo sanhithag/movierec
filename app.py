@@ -3,21 +3,13 @@ import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import linear_kernel
 
-st.set_page_config(page_title="CineMatch", page_icon="🍿", layout="wide")
-
-# Custom CSS for a darker, modern look
-st.markdown("""
-    <style>
-    .main { background-color: #0e1117; color: white; }
-    div.stButton > button:first-child { background-color: #e50914; color: white; border: none; }
-    </style>
-    """, unsafe_allow_html=True)
+st.set_page_config(page_title="CineMatch Pro", page_icon="🍿", layout="wide")
 
 @st.cache_data
 def load_data():
     df = pd.read_csv('movies.csv')
-    # IMDb uses 'primaryTitle'. Let's create a 'tags' column using genres.
     df['genres'] = df['genres'].fillna('')
+    # Pre-calculate similarity
     tfidf = TfidfVectorizer(stop_words='english')
     tfidf_matrix = tfidf.fit_transform(df['genres'])
     cosine_sim = linear_kernel(tfidf_matrix, tfidf_matrix)
@@ -25,21 +17,30 @@ def load_data():
 
 try:
     df, cosine_sim = load_data()
+
+    # --- SIDEBAR FILTERS ---
+    st.sidebar.header("Filter Content")
+    content_type = st.sidebar.multiselect("Select Type:", options=df['titleType'].unique(), default=df['titleType'].unique())
+    
+    # Filter the dataframe based on sidebar
+    filtered_df = df[df['titleType'].isin(content_type)]
+
+    # --- MAIN UI ---
     st.title("🍿 CineMatch AI")
-    st.write("Discover movies and shows based on your favorites.")
+    selected_title = st.selectbox("Search for a Movie or TV Show:", filtered_df['primaryTitle'].values)
 
-    selected_title = st.selectbox("Search for a Movie or TV Show:", df['primaryTitle'].values)
-
-    if st.button('Recommend'):
+    if st.button('Get Recommendations'):
         idx = df[df['primaryTitle'] == selected_title].index[0]
-        sim_scores = sorted(list(enumerate(cosine_sim[idx])), key=lambda x: x[1], reverse=True)[1:7]
+        sim_scores = sorted(list(enumerate(cosine_sim[idx])), key=lambda x: x[1], reverse=True)[1:10]
         
-        st.subheader("Recommended for you:")
+        st.subheader("Results:")
         cols = st.columns(3)
         for i, (m_idx, score) in enumerate(sim_scores):
+            movie_row = df.iloc[m_idx]
             with cols[i % 3]:
-                st.info(f"**{df.iloc[m_idx]['primaryTitle']}**")
-                st.caption(f"Year: {df.iloc[m_idx]['startYear']} | Genre: {df.iloc[m_idx]['genres']}")
+                st.info(f"**{movie_row['primaryTitle']}**")
+                st.write(f"⭐ Rating: {movie_row['averageRating']} | 📅 {int(movie_row['startYear'])}")
+                st.caption(f"Type: {movie_row['titleType']} | {movie_row['genres']}")
 
 except Exception as e:
-    st.error("Please run export_data.py first to create movies.csv!")
+    st.error(f"Waiting for data... Ensure app.py and movies.csv are in your GitHub root. Error: {e}")
