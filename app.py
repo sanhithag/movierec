@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import requests
 
-st.set_page_config(page_title="Movierecs cuz im lazy ash", page_icon="🍿", layout="wide")
+st.set_page_config(page_title="Movierecs", page_icon="🎞️", layout="wide")
 
 # --- IMPROVED DEEP SEARCH HELPERS ---
 def get_movie_details(imdb_id, title):
@@ -51,11 +51,11 @@ def load_data():
 # --- APP UI ---
 try:
     df = load_data()
-    st.title("🍿 Plot-Based Recommender")
+    st.title("Plot-based recs")
 
-    selected_title = st.selectbox("Select a movie/show:", df['primaryTitle'].values)
+    selected_title = st.selectbox("Type the name of a movie/tv show", df['primaryTitle'].values)
 
-    if st.button('Find Similar Stories'):
+    if st.button('Find Similar recs'):
         row = df[df['primaryTitle'] == selected_title].iloc[0]
         tmdb_id, plot, poster, m_type = get_movie_details(row['tconst'], selected_title)
         
@@ -86,3 +86,4 @@ try:
 
 except Exception as e:
     st.error(f"Error: {e}")
+
