@@ -3,7 +3,7 @@ import pandas as pd
 import requests
 
 # --- PAGE CONFIG ---
-st.set_page_config(page_title="Movierecs cuz im lazy ash", page_icon="🍿", layout="wide")
+st.set_page_config(page_title="Movierecs", page_icon="🎞️", layout="wide")
 
 # --- TMDB API HELPERS ---
 def get_movie_details(imdb_id):
@@ -41,8 +41,8 @@ def load_data():
 # --- UI ---
 try:
     df = load_data()
-    st.title("🍿 Plot-Based Recommender")
-    st.write("Using TMDB's AI to find stories, not just genres.")
+    st.title("Plot-recs")
+    st.write("Search for a movie and get similar movie recs. Yay!!!!")
 
     selected_title = st.selectbox("Select a movie you love:", df['primaryTitle'].values)
 
@@ -82,3 +82,4 @@ try:
 
 except Exception as e:
     st.error(f"Error: {e}")
+
