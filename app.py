@@ -6,44 +6,55 @@ from sklearn.metrics.pairwise import linear_kernel
 st.set_page_config(page_title="CineMatch", page_icon="🍿", layout="wide")
 
 @st.cache_data
-def load_data():
-    # Load data and keep only the columns we need to save RAM
-    df = pd.read_csv('movies.csv', usecols=['tconst', 'primaryTitle', 'genres', 'averageRating', 'startYear'])
+def load_and_prep_data():
+    # Load and filter immediately to save RAM
+    df = pd.read_csv('movies.csv', low_memory=False)
+    
+    # Clean data: Filter for movies > 2000 and ensure ratings exist
+    df = df[df['startYear'] > 2000].copy()
     df['genres'] = df['genres'].fillna('')
+    
+    # IMPORTANT: Reset index so df index matches tfidf_matrix rows
+    df = df.reset_index(drop=True)
     return df
 
-try:
-    @st.cache_data
-    def load_data():
-        df = pd.read_csv('movies.csv', low_memory=False)
-        # Filter for movies made after the year 2000
-        df = df[df['startYear'] > 2000] 
-        df['genres'] = df['genres'].fillna('')
-        return df
-    
-    # We move the Vectorizer OUTSIDE the load_data to process it only when needed
+@st.cache_resource # Use cache_resource for objects like the TF-IDF matrix
+def compute_tfidf(genres_series):
     tfidf = TfidfVectorizer(stop_words='english')
-    tfidf_matrix = tfidf.fit_transform(df['genres'])
+    matrix = tfidf.fit_transform(genres_series)
+    return matrix
+
+# --- App Logic ---
+
+try:
+    df = load_and_prep_data()
+    tfidf_matrix = compute_tfidf(df['genres'])
 
     st.title("🍿 CineMatch AI")
+    
+    # Using a selectbox with a search feature
     selected_title = st.selectbox("Search for a Movie/Show:", df['primaryTitle'].values)
 
     if st.button('Recommend'):
-        # We calculate similarity ONLY for the selected movie to save memory
+        # Find index of selected movie
         idx = df[df['primaryTitle'] == selected_title].index[0]
-        # Instead of a full matrix, we just compare the selected movie to everything else
+        
+        # Calculate similarity for just this row
         cosine_sim_single = linear_kernel(tfidf_matrix[idx], tfidf_matrix).flatten()
         
-        # Get top 6 matches
+        # Get top matches (excluding the movie itself)
         sim_scores = sorted(list(enumerate(cosine_sim_single)), key=lambda x: x[1], reverse=True)[1:7]
         
-        st.subheader("Recommended for you:")
+        st.subheader(f"Because you liked '{selected_title}':")
         cols = st.columns(3)
+        
         for i, (m_idx, score) in enumerate(sim_scores):
+            movie = df.iloc[m_idx]
             with cols[i % 3]:
-                st.info(f"**{df.iloc[m_idx]['primaryTitle']}**")
-                st.caption(f"Year: {df.iloc[m_idx]['startYear']} | ⭐ {df.iloc[m_idx]['averageRating']}")
+                with st.container(border=True): # Adds a nice frame
+                    st.markdown(f"**{movie['primaryTitle']}**")
+                    st.caption(f"📅 {int(movie['startYear'])} | ⭐ {movie['averageRating']}")
 
 except Exception as e:
-    st.error("App is initializing. Please wait 30 seconds and refresh.")
-
+    st.error(f"Something went wrong: {e}")
+    st.info("Check if 'movies.csv' is in the same folder and has the correct columns.")
