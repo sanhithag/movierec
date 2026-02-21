@@ -34,9 +34,34 @@ def get_recommendations(tmdb_id, media_type="movie"):
 @st.cache_data
 def load_data():
     df = pd.read_csv('movies.csv', low_memory=False)
-    # We'll stick to popular modern movies to ensure the API has data for them
-    df = df[(df['startYear'] > 2000) & (df['numVotes'] > 20000)]
+    # Widen the net: Include everything from 1950 onwards with at least 500 votes
+    df = df[(df['startYear'] > 1950) & (df['numVotes'] > 500)]
     return df.sort_values('primaryTitle')
+
+def get_movie_details(imdb_id, title):
+    api_key = st.secrets["TMDB_API_KEY"]
+    # TRY 1: Find by IMDb ID (The most accurate)
+    find_url = f"https://api.themoviedb.org/3/find/{imdb_id}?api_key={api_key}&external_source=imdb_id"
+    try:
+        data = requests.get(find_url).json()
+        if data['movie_results']:
+            res = data['movie_results'][0]
+            return res['id'], res['overview'], f"https://image.tmdb.org/t/p/w500{res['poster_path']}", "movie"
+        if data['tv_results']:
+            res = data['tv_results'][0]
+            return res['id'], res['overview'], f"https://image.tmdb.org/t/p/w500{res['poster_path']}", "tv"
+            
+        # TRY 2: Backup - Search by Text Title if ID fails
+        search_url = f"https://api.themoviedb.org/3/search/multi?api_key={api_key}&query={title}"
+        search_data = requests.get(search_url).json()
+        if search_data['results']:
+            res = search_data['results'][0]
+            m_type = res.get('media_type', 'movie')
+            return res['id'], res['overview'], f"https://image.tmdb.org/t/p/w500{res['poster_path']}", m_type
+            
+    except:
+        return None, None, None, None
+    return None, None, None, None
 
 # --- UI ---
 try:
@@ -82,4 +107,5 @@ try:
 
 except Exception as e:
     st.error(f"Error: {e}")
+
 
