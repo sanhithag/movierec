@@ -3,7 +3,7 @@ import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import linear_kernel
 
-st.set_page_config(page_title="CineMatch", page_icon="🍿", layout="wide")
+st.set_page_config(page_title="Movierecs cuz im lazy ash", page_icon="🍿", layout="wide")
 
 @st.cache_data
 def load_and_prep_data():
@@ -58,3 +58,4 @@ try:
 except Exception as e:
     st.error(f"Something went wrong: {e}")
     st.info("Check if 'movies.csv' is in the same folder and has the correct columns.")
+
