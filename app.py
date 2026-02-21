@@ -1,63 +1,42 @@
 import streamlit as st
 import pandas as pd
-import requests
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import linear_kernel
 
-# --- PAGE CONFIG ---
-st.set_page_config(page_title="CineMatch AI", page_icon="🎬", layout="wide")
+st.set_page_config(page_title="CineMatch", page_icon="🍿", layout="wide")
 
-# This function fetches real posters from TMDB using the IMDb ID (tconst)
-def get_poster(imdb_id):
-    # Using a public educational API key
-    url = f"https://api.themoviedb.org/3/find/{imdb_id}?api_key=8265bd1679663a7ea12ac168da84d2e8&external_source=imdb_id"
-    try:
-        data = requests.get(url).json()
-        poster_path = data['movie_results'][0]['poster_path'] if data['movie_results'] else data['tv_results'][0]['poster_path']
-        return f"https://image.tmdb.org/t/p/w500{poster_path}"
-    except:
-        return "https://via.placeholder.com/500x750?text=No+Poster"
-
-# --- DATA ENGINE ---
 @st.cache_data
 def load_data():
-    # Use low_memory=False for faster, more stable loading of large CSVs
-    df = pd.read_csv('movies.csv', low_memory=False)
-    
-    # Fill empty genres once
+    # Load data and keep only the columns we need to save RAM
+    df = pd.read_csv('movies.csv', usecols=['tconst', 'primaryTitle', 'genres', 'averageRating', 'startYear'])
     df['genres'] = df['genres'].fillna('')
+    return df
+
+try:
+    df = load_data()
     
-    # Standard TF-IDF vectorization
+    # We move the Vectorizer OUTSIDE the load_data to process it only when needed
     tfidf = TfidfVectorizer(stop_words='english')
     tfidf_matrix = tfidf.fit_transform(df['genres'])
-    
-    # Linear kernel is memory-efficient for this scale
-    cosine_sim = linear_kernel(tfidf_matrix, tfidf_matrix)
-    return df, cosine_sim
 
-# --- UI ---
-try:
-    df, cosine_sim = load_data()
-    st.title("🎬 CineMatch AI")
-    st.write("Find your next favorite movie or TV show.")
+    st.title("🍿 CineMatch AI")
+    selected_title = st.selectbox("Search for a Movie/Show:", df['primaryTitle'].values)
 
-    # Search bar using the titles from your exported IMDb data
-    selected_movie = st.selectbox("Type a movie/show you like:", df['primaryTitle'].values)
-
-    if st.button('Get Recommendations'):
-        idx = df[df['primaryTitle'] == selected_movie].index[0]
-        sim_scores = sorted(list(enumerate(cosine_sim[idx])), key=lambda x: x[1], reverse=True)[1:6]
+    if st.button('Recommend'):
+        # We calculate similarity ONLY for the selected movie to save memory
+        idx = df[df['primaryTitle'] == selected_title].index[0]
+        # Instead of a full matrix, we just compare the selected movie to everything else
+        cosine_sim_single = linear_kernel(tfidf_matrix[idx], tfidf_matrix).flatten()
         
-        st.subheader(f"Because you liked {selected_movie}...")
-        cols = st.columns(5)
+        # Get top 6 matches
+        sim_scores = sorted(list(enumerate(cosine_sim_single)), key=lambda x: x[1], reverse=True)[1:7]
+        
+        st.subheader("Recommended for you:")
+        cols = st.columns(3)
         for i, (m_idx, score) in enumerate(sim_scores):
-            movie_data = df.iloc[m_idx]
-            with cols[i]:
-                # Fetching the poster using the tconst column from movies.csv
-                st.image(get_poster(movie_data['tconst']), use_container_width=True)
-                st.write(f"**{movie_data['primaryTitle']}**")
-                st.caption(f"⭐ {movie_data['averageRating']} | {int(movie_data['startYear'])}")
+            with cols[i % 3]:
+                st.info(f"**{df.iloc[m_idx]['primaryTitle']}**")
+                st.caption(f"Year: {df.iloc[m_idx]['startYear']} | ⭐ {df.iloc[m_idx]['averageRating']}")
 
 except Exception as e:
-    st.error("The app is currently loading the dataset. Please refresh in a moment.")
-
+    st.error("App is initializing. Please wait 30 seconds and refresh.")
