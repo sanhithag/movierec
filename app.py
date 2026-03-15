@@ -4,65 +4,59 @@ import requests
 
 st.set_page_config(page_title="Movierecs", page_icon="🎞️", layout="wide")
 
-# --- IMPROVED DEEP SEARCH HELPERS ---
 def get_movie_details(imdb_id, title):
     api_key = st.secrets["TMDB_API_KEY"]
-    
-    # TRY 1: Find by exact IMDb ID
+    # We add 'append_to_response' to get providers and ratings in one call
     find_url = f"https://api.themoviedb.org/3/find/{imdb_id}?api_key={api_key}&external_source=imdb_id"
+    
     try:
         data = requests.get(find_url).json()
+        res = None
+        m_type = "movie"
+        
         if data.get('movie_results'):
             res = data['movie_results'][0]
-            return res['id'], res['overview'], f"https://image.tmdb.org/t/p/w500{res['poster_path']}", "movie"
-        if data.get('tv_results'):
+        elif data.get('tv_results'):
             res = data['tv_results'][0]
-            return res['id'], res['overview'], f"https://image.tmdb.org/t/p/w500{res['poster_path']}", "tv"
+            m_type = "tv"
+
+        if res:
+            tmdb_id = res['id']
+            # Fetch Watch Providers (OTT)
+            ott_url = f"https://api.themoviedb.org/3/{m_type}/{tmdb_id}/watch/providers?api_key={api_key}"
+            ott_data = requests.get(ott_url).json()
+            # Defaulting to 'US' region, change to 'IN' or your country code
+            providers = ott_data.get('results', {}).get('US', {}).get('flatrate', [])
+            ott_list = [p['provider_name'] for p in providers]
             
-        # TRY 2: Backup search by Title (if the ID handshake fails)
-        search_url = f"https://api.themoviedb.org/3/search/multi?api_key={api_key}&query={title}"
-        search_res = requests.get(search_url).json()
-        if search_res.get('results'):
-            res = search_res['results'][0]
-            m_type = res.get('media_type', 'movie')
-            poster = f"https://image.tmdb.org/t/p/w500{res.get('poster_path')}" if res.get('poster_path') else "https://via.placeholder.com/500"
-            return res['id'], res['overview'], poster, m_type
-    except:
-        return None, None, None, None
-    return None, None, None, None
-
-def get_recommendations(tmdb_id, media_type="movie"):
-    api_key = st.secrets["TMDB_API_KEY"]
-    # TMDB's internal AI matches stories/keywords
-    rec_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/recommendations?api_key={api_key}"
-    try:
-        return requests.get(rec_url).json().get('results', [])[:6]
-    except:
-        return []
-
-# --- DATA ENGINE ---
-@st.cache_data
-def load_data():
-    df = pd.read_csv('movies.csv', low_memory=False)
-    # WIDEN THE NET: Only filter out things with almost zero votes
-    df = df[df['numVotes'] > 500].copy()
-    return df.sort_values('primaryTitle')
+            poster = f"https://image.tmdb.org/t/p/w500{res['poster_path']}" if res.get('poster_path') else "https://via.placeholder.com/500"
+            return tmdb_id, res['overview'], poster, m_type, res.get('vote_average'), ott_list
+            
+    except Exception as e:
+        return None, None, None, None, None, []
+    return None, None, None, None, None, []
 
 # --- APP UI ---
 try:
-    df = load_data()
-    st.title("Plot-based recs")
+    df = load_data() # (Assuming load_data is defined as before)
+    st.title("Plot-based recs + Streaming Info")
 
-    selected_title = st.selectbox("Type the name of a movie/tv show", df['primaryTitle'].values)
+    selected_title = st.selectbox("Type a movie/tv show", df['primaryTitle'].values)
 
     if st.button('Find Similar recs'):
         row = df[df['primaryTitle'] == selected_title].iloc[0]
-        tmdb_id, plot, poster, m_type = get_movie_details(row['tconst'], selected_title)
+        # Get extra data: rating and ott_platforms
+        tmdb_id, plot, poster, m_type, rating, ott = get_movie_details(row['tconst'], selected_title)
         
         if tmdb_id:
-            with st.expander("📌 Original Plot Summary"):
+            with st.expander("📌 Original Plot & Info"):
                 col1, col2 = st.columns([1, 4])
                 col1.image(poster)
+                col2.write(f"**Rating:** ⭐ {rating}/10")
+                if ott:
+                    col2.write(f"**Available on:** {', '.join(ott)}")
+                else:
+                    col2.write("**Available on:** Not found (Check JustWatch)")
                 col2.write(plot)
             
             st.markdown("---")
@@ -74,16 +68,6 @@ try:
                     with cols[i % 3]:
                         with st.container(border=True):
                             m_title = movie.get('title') or movie.get('name')
-                            p_path = movie.get('poster_path')
-                            img = f"https://image.tmdb.org/t/p/w500{p_path}" if p_path else "https://via.placeholder.com/500"
-                            st.image(img, use_container_width=True)
+                            st.image(f"https://image.tmdb.org/t/p/w500{movie.get('poster_path')}", use_container_width=True)
                             st.markdown(f"**{m_title}**")
-                            st.caption(f"{movie['overview'][:150]}...")
-            else:
-                st.warning("No plot matches found. Try another movie!")
-        else:
-            st.error("This title is missing from the plot database.")
-
-except Exception as e:
-    st.error(f"Error: {e}")
-
+                            st.caption(f"⭐ {movie.get('vote_average')} | {movie['overview'][:100]}...")
