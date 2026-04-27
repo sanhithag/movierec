@@ -1,82 +1,73 @@
 import streamlit as st
 import requests
 
-# Page Config for a better title/icon in the browser tab
-st.set_page_config(page_title="Cinematch", page_icon="🍿", layout="wide")
+# Page Setup
+st.set_page_config(page_title="FilmFinder", page_icon="🎬", layout="wide")
 
-# --- CUSTOM CSS ---
+# OMDb API Key (Get yours at http://www.omdbapi.com/apikey.aspx)
+# Add this to your Streamlit Secrets as OMDB_API_KEY
+API_KEY = st.secrets["OMDB_API_KEY"]
+
+# Custom CSS for a "Premium" feel
 st.markdown("""
     <style>
-    /* Main background */
-    .main {
-        background-color: #0e1117;
-    }
-    
-    /* Movie Card Styling */
+    .main { background-color: #050505; }
     .movie-card {
-        background: rgba(255, 255, 255, 0.05);
-        border-radius: 15px;
-        padding: 15px;
-        transition: transform 0.3s ease, box-shadow 0.3s ease;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        height: 100%;
+        background: #1a1a1a;
+        border-radius: 12px;
+        padding: 10px;
+        margin-bottom: 20px;
+        border: 1px solid #333;
+        transition: all 0.3s ease;
     }
-    
     .movie-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0px 10px 20px rgba(0,0,0,0.4);
-        border: 1px solid #ff4b4b;
+        border-color: #00d4ff;
+        transform: scale(1.02);
     }
-
-    /* Title Styling */
     .movie-title {
-        color: #ffffff;
-        font-family: 'Inter', sans-serif;
-        font-size: 1.1rem;
-        font-weight: 600;
-        margin-top: 10px;
+        color: white;
+        font-weight: bold;
+        font-size: 1rem;
+        margin-top: 8px;
+    }
+    .movie-meta {
+        color: #00d4ff;
+        font-size: 0.8rem;
     }
     </style>
-    """, unsafe_allow_input=True)
+""", unsafe_allow_input=True)
 
-# --- LOGIC ---
-TMDB_API_KEY = st.secrets["TMDB_API_KEY"]
+def fetch_movie_data(title):
+    # OMDb uses 's' for search (returns list) or 't' for title (returns one)
+    url = f"http://www.omdbapi.com/?apikey={API_KEY}&s={title}"
+    response = requests.get(url).json()
+    if response.get("Response") == "True":
+        return response.get("Search")[:6] # Return first 6 results
+    return None
 
-def get_recommendations(movie_title):
-    search_url = f"https://api.themoviedb.org/3/search/movie?api_key={TMDB_API_KEY}&query={movie_title}"
-    response = requests.get(search_url).json()
-    if response['results']:
-        movie_id = response['results'][0]['id']
-        rec_url = f"https://api.themoviedb.org/3/movie/{movie_id}/recommendations?api_key={TMDB_API_KEY}"
-        return requests.get(rec_url).json()['results'][:6] # 6 works best for a 3-column grid
-    return []
+# UI Layout
+st.title("🎬 FilmFinder")
+st.write("Search for movies to see a modern recommendation-style layout.")
 
-# --- UI ---
-st.title("🍿 Cinematch")
-st.markdown("##### Discover your next favorite film without the scrolling fatigue.")
+query = st.text_input("", placeholder="Enter a movie name...")
 
-user_input = st.text_input("", placeholder="Type a movie you love (e.g., Inception)...")
-
-if user_input:
-    recs = get_recommendations(user_input)
-    if recs:
-        # Create a grid layout
-        cols = st.columns(3) 
-        for idx, movie in enumerate(recs):
-            with cols[idx % 3]:
-                # Injecting HTML for the custom card look
-                poster = f"https://image.tmdb.org/t/p/w500{movie['poster_path']}" if movie['poster_path'] else ""
+if query:
+    results = fetch_movie_data(query)
+    if results:
+        cols = st.columns(3)
+        for i, movie in enumerate(results):
+            with cols[i % 3]:
+                # Handling missing posters
+                poster_url = movie['Poster'] if movie['Poster'] != "N/A" else "https://via.placeholder.com/300x450?text=No+Image"
+                
                 st.markdown(f"""
                     <div class="movie-card">
-                        <img src="{poster}" style="width:100%; border-radius:10px;">
-                        <div class="movie-title">{movie['title']}</div>
-                        <p style="color: #888; font-size: 0.8rem;">⭐ {movie['vote_average']} | {movie['release_date'][:4]}</p>
+                        <img src="{poster_url}" style="width:100%; border-radius:8px;">
+                        <div class="movie-title">{movie['Title']}</div>
+                        <div class="movie-meta">{movie['Year']} • {movie['Type'].capitalize()}</div>
                     </div>
                 """, unsafe_allow_input=True)
-                st.write("") # Spacer
     else:
-        st.warning("We couldn't find that one. Try checking the spelling!")
+        st.error("No results found. Please check your connection or API key.")
 
-# --- FOOTER ---
-st.sidebar.markdown("---")
-st.sidebar.caption("Data provided by [TMDb](https://www.themoviedb.org/)")
+st.sidebar.info("Using OMDb API as a TMDb alternative.")
