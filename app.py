@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 
 # 1. Page Configuration
-st.set_page_config(page_title="FilmFlux", page_icon="🎬", layout="wide")
+st.set_page_config(page_title="movierec", page_icon="🎬", layout="wide")
 
 # 2. API Key Setup
 # Get your free key at http://www.omdbapi.com/apikey.aspx
@@ -61,8 +61,8 @@ def search_movies(title):
     return None
 
 # 5. UI Layout
-st.title("🎬 FilmFlux")
-st.write("A boutique movie search engine powered by OMDb.")
+st.title("movierec")
+st.write("A movie reccommendation system using OMDb")
 
 query = st.text_input("", placeholder="Search for a movie (e.g., Interstellar)")
 
