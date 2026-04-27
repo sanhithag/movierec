@@ -1,93 +1,129 @@
 import streamlit as st
+import pandas as pd
 import requests
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
-# 1. Page Configuration
-st.set_page_config(page_title="movierec", page_icon="🎬", layout="wide")
+# 1. PAGE CONFIGURATION
+st.set_page_config(page_title="PlotMatch AI", page_icon="🎬", layout="wide")
 
-# 2. API Key Setup
-# Get your free key at http://www.omdbapi.com/apikey.aspx
-OMDB_API_KEY = st.secrets["OMDB_API_KEY"]
-
-# 3. Custom CSS (Fixed and Polished)
+# 2. CUSTOM UI STYLING (The "Non-AI" look)
 st.markdown("""
     <style>
     .main { background-color: #0e1117; }
-    .stTextInput>div>div>input {
-        background-color: #262730;
-        color: white;
-        border-radius: 10px;
-        border: 1px solid #444;
-    }
     .movie-card {
         background: #1e1e26;
-        border-radius: 15px;
+        border-radius: 12px;
         padding: 15px;
-        text-align: center;
         border: 1px solid #333;
-        transition: transform 0.3s;
-        height: 520px; /* Uniform height for grid */
+        transition: transform 0.3s ease;
+        height: 620px;
     }
     .movie-card:hover {
-        transform: translateY(-10px);
+        transform: translateY(-8px);
         border-color: #ff4b4b;
     }
-    .poster {
-        border-radius: 10px;
-        margin-bottom: 10px;
-        object-fit: cover;
-    }
-    .title-text {
-        color: white;
-        font-size: 1.1rem;
-        font-weight: bold;
-        margin: 5px 0;
-    }
-    .meta-text {
+    .plot-text {
         color: #999;
         font-size: 0.85rem;
+        height: 80px;
+        overflow: hidden;
+        margin-top: 10px;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# 4. Data Fetching Logic
-def search_movies(title):
-    url = f"http://www.omdbapi.com/?apikey={OMDB_API_KEY}&s={title}"
+# 3. DATA & SIMILARITY ENGINE
+@st.cache_resource # Use resource for large math objects
+def load_and_compute():
+    # Load the lite file you created
+    df = pd.read_pickle("movies_lite.pkl")
+    
+    # Vectorize the plot overviews
+    tfidf = TfidfVectorizer(stop_words='english')
+    tfidf_matrix = tfidf.fit_transform(df['overview'])
+    
+    # Calculate Similarity Scores
+    similarity = cosine_similarity(tfidf_matrix, tfidf_matrix)
+    return df, similarity
+
+try:
+    df, similarity = load_and_compute()
+except FileNotFoundError:
+    st.error("Missing 'movies_lite.pkl'. Please run your preprocessing script first!")
+    st.stop()
+
+# 4. API HELPER
+def get_omdb_details(movie_title):
+    api_key = st.secrets["OMDB_API_KEY"]
+    url = f"http://www.omdbapi.com/?t={movie_title}&apikey={api_key}"
     try:
-        response = requests.get(url).json()
-        if response.get("Response") == "True":
-            return response.get("Search")[:6] # Top 6 results
-    except Exception as e:
-        st.error(f"Connection Error: {e}")
-    return None
+        return requests.get(url).json()
+    except:
+        return None
 
-# 5. UI Layout
-st.title("movierec")
-st.write("A movie reccommendation system using OMDb")
+# 5. RECOMMENDATION LOGIC
+def recommend(movie_title):
+    try:
+        idx = df[df['title'] == movie_title].index[0]
+        distances = sorted(list(enumerate(similarity[idx])), reverse=True, key=lambda x: x[1])
+        
+        results = []
+        for i in distances[1:7]: # Get top 6 matches
+            results.append(df.iloc[i[0]].title)
+        return results
+    except Exception:
+        return []
 
-query = st.text_input("", placeholder="Search for a movie (e.g., Interstellar)")
+# 6. APP INTERFACE
+st.title("🧠 PlotMatch AI")
+st.markdown("##### Discover movies based on plot similarity, not just genres.")
 
-if query:
-    results = search_movies(query)
-    if results:
-        cols = st.columns(3) # 3-column grid
-        for i, movie in enumerate(results):
-            with cols[i % 3]:
-                # Poster handling
-                img = movie['Poster'] if movie['Poster'] != "N/A" else "https://via.placeholder.com/300x450?text=No+Poster"
+# Search bar
+selected_movie = st.selectbox(
+    "Type or select a movie you liked:",
+    df['title'].values,
+    index=None,
+    placeholder="Select a movie..."
+)
+
+if selected_movie:
+    with st.spinner("Finding similar stories..."):
+        recommendations = recommend(selected_movie)
+        
+        if recommendations:
+            st.write("---")
+            cols = st.columns(3)
+            
+            for idx, title in enumerate(recommendations):
+                movie_info = get_omdb_details(title)
                 
-                # Using HTML for the card to ensure it looks "Custom"
-                st.markdown(f"""
-                    <div class="movie-card">
-                        <img src="{img}" class="poster" width="100%">
-                        <div class="title-text">{movie['Title']}</div>
-                        <div class="meta-text">{movie['Year']} • {movie['Type'].capitalize()}</div>
-                    </div>
-                """, unsafe_allow_html=True)
-                st.write("") # Spacer
-    else:
-        st.warning("No movies found. Try another title!")
+                with cols[idx % 3]:
+                    # Visuals
+                    poster = movie_info.get('Poster', "") if movie_info else ""
+                    if poster == "N/A" or not poster:
+                        poster = "https://via.placeholder.com/300x450?text=No+Poster"
+                    
+                    plot = movie_info.get('Plot', "No description available.") if movie_info else "Description not found."
+                    rating = movie_info.get('imdbRating', 'N/A') if movie_info else "N/A"
 
-# 6. Sidebar Credit (Required by most APIs)
-st.sidebar.title("About")
-st.sidebar.info("This project showcases API integration and Custom CSS in Streamlit.")
-st.sidebar.caption("Data source: OMDb API")
+                    # Displaying the Card
+                    st.markdown(f"""
+                        <div class="movie-card">
+                            <img src="{poster}" style="width:100%; border-radius:8px;">
+                            <h3 style="color:white; font-size:1.1rem; margin-top:10px;">{title}</h3>
+                            <p style="color:#ff4b4b; font-weight:bold;">⭐ {rating}</p>
+                            <div class="plot-text">{plot}</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    st.write("") # Margin
+        else:
+            st.warning("We couldn't find matches for that one.")
+
+# 7. SIDEBAR & CREDITS
+st.sidebar.header("How it works")
+st.sidebar.write("""
+This engine uses **Natural Language Processing (NLP)**. 
+It converts movie plots into mathematical vectors and uses **Cosine Similarity** to find the 'distance' between stories.
+""")
+st.sidebar.caption("Data: TMDB & OMDb")
