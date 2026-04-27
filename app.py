@@ -1,35 +1,93 @@
 import streamlit as st
-import pandas as pd
 import requests
 
-# 1. Load your local (pre-filtered) IMDb data
-@st.cache_data
-def load_data():
-    return pd.read_csv("movies_lite.csv") # You created this from the IMDb TSV
+# 1. Page Configuration
+st.set_page_config(page_title="FilmFlux", page_icon="🎬", layout="wide")
 
-df = load_data()
+# 2. API Key Setup
+# Get your free key at http://www.omdbapi.com/apikey.aspx
+OMDB_API_KEY = st.secrets["OMDB_API_KEY"]
 
-# 2. Function to get posters using the IMDb ID (tconst)
-def get_poster_url(imdb_id):
-    # OMDb API is a great TMDb alternative for posters
-    api_key = st.secrets["OMDB_API_KEY"]
-    url = f"http://www.omdbapi.com/?i={imdb_id}&apikey={api_key}"
+# 3. Custom CSS (Fixed and Polished)
+st.markdown("""
+    <style>
+    .main { background-color: #0e1117; }
+    .stTextInput>div>div>input {
+        background-color: #262730;
+        color: white;
+        border-radius: 10px;
+        border: 1px solid #444;
+    }
+    .movie-card {
+        background: #1e1e26;
+        border-radius: 15px;
+        padding: 15px;
+        text-align: center;
+        border: 1px solid #333;
+        transition: transform 0.3s;
+        height: 520px; /* Uniform height for grid */
+    }
+    .movie-card:hover {
+        transform: translateY(-10px);
+        border-color: #ff4b4b;
+    }
+    .poster {
+        border-radius: 10px;
+        margin-bottom: 10px;
+        object-fit: cover;
+    }
+    .title-text {
+        color: white;
+        font-size: 1.1rem;
+        font-weight: bold;
+        margin: 5px 0;
+    }
+    .meta-text {
+        color: #999;
+        font-size: 0.85rem;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+# 4. Data Fetching Logic
+def search_movies(title):
+    url = f"http://www.omdbapi.com/?apikey={OMDB_API_KEY}&s={title}"
     try:
-        data = requests.get(url).json()
-        return data.get('Poster', "https://via.placeholder.com/300x450")
-    except:
-        return "https://via.placeholder.com/300x450"
+        response = requests.get(url).json()
+        if response.get("Response") == "True":
+            return response.get("Search")[:6] # Top 6 results
+    except Exception as e:
+        st.error(f"Connection Error: {e}")
+    return None
 
-# --- UI ---
-st.title("IMDb Local Explorer")
-query = st.text_input("Search a movie from local database:")
+# 5. UI Layout
+st.title("🎬 FilmFlux")
+st.write("A boutique movie search engine powered by OMDb.")
+
+query = st.text_input("", placeholder="Search for a movie (e.g., Interstellar)")
 
 if query:
-    results = df[df['primaryTitle'].str.contains(query, case=False)].head(3)
-    
-    cols = st.columns(3)
-    for i, (index, row) in enumerate(results.iterrows()):
-        with cols[i]:
-            poster = get_poster_url(row['tconst'])
-            st.image(poster, caption=row['primaryTitle'])
-            st.write(f"Rating: ⭐ {row['averageRating']}")
+    results = search_movies(query)
+    if results:
+        cols = st.columns(3) # 3-column grid
+        for i, movie in enumerate(results):
+            with cols[i % 3]:
+                # Poster handling
+                img = movie['Poster'] if movie['Poster'] != "N/A" else "https://via.placeholder.com/300x450?text=No+Poster"
+                
+                # Using HTML for the card to ensure it looks "Custom"
+                st.markdown(f"""
+                    <div class="movie-card">
+                        <img src="{img}" class="poster" width="100%">
+                        <div class="title-text">{movie['Title']}</div>
+                        <div class="meta-text">{movie['Year']} • {movie['Type'].capitalize()}</div>
+                    </div>
+                """, unsafe_allow_html=True)
+                st.write("") # Spacer
+    else:
+        st.warning("No movies found. Try another title!")
+
+# 6. Sidebar Credit (Required by most APIs)
+st.sidebar.title("About")
+st.sidebar.info("This project showcases API integration and Custom CSS in Streamlit.")
+st.sidebar.caption("Data source: OMDb API")
