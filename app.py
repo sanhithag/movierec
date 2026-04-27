@@ -5,7 +5,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 # 1. PAGE SETUP
-st.set_page_config(page_title="FilmMatch AI", page_icon="🎬", layout="wide")
+st.set_page_config(page_title="movierec", page_icon="🎬", layout="wide")
 
 # 2. CUSTOM CSS (Enhanced for 9-grid stability)
 st.markdown("""
