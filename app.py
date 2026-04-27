@@ -54,7 +54,7 @@ def fetch_details(title):
         return None
 
 # 5. UI
-st.title("🎬 FilmMatch AI")
+st.title("movierec")
 selected_movie = st.selectbox("Search for a movie you love:", df['title'].values, index=None)
 
 if selected_movie:
