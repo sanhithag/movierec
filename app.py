@@ -5,7 +5,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 # 1. PAGE CONFIGURATION
-st.set_page_config(page_title="PlotMatch AI", page_icon="🎬", layout="wide")
+st.set_page_config(page_title="movierec", page_icon="🎬", layout="wide")
 
 # 2. CUSTOM UI STYLING (The "Non-AI" look)
 st.markdown("""
@@ -76,8 +76,8 @@ def recommend(movie_title):
         return []
 
 # 6. APP INTERFACE
-st.title("🧠 PlotMatch AI")
-st.markdown("##### Discover movies based on plot similarity, not just genres.")
+st.title("movierec")
+st.markdown("Discover movies based on plot similarity, not just genres.")
 
 # Search bar
 selected_movie = st.selectbox(
